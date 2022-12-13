@@ -1,6 +1,4 @@
-import time
-
-all_time = 0
+from time import perf_counter
 
 
 def get_information(pattern_information, information):
@@ -17,8 +15,7 @@ def get_information(pattern_information, information):
 def about_timetable(information):
     pattern_information = {'lang': None,
                            'group': None,
-                           'day': None,
-                           'lessons': None
+                           'days': None,
                            }
     return get_information(pattern_information, information)
 
@@ -34,32 +31,63 @@ def about_lesson(information):
     return get_information(pattern_information, information)
 
 
-def start(json_file, yaml_file):
-    global all_time
-    start_time = time.perf_counter()
-    flag_timetable = False
+def about_days(information):
+    pattern_information = {'name': None,
+                           'lessons': None
+                           }
+    return get_information(pattern_information, information)
+
+
+def get_last_name(current_string):
+    delta_last = current_string.split(',')[-1]
+    return delta_last[1:(delta_last.index(':') - 1)]
+
+
+def writer(nesting_level, key, value, flag):
+    return ' ' * nesting_level + '- ' * flag + ' ' * (not flag) * nesting_level + key + ": " + value
+
+
+def start(input_file, output_file):
     nesting_level = -1
-    input_file = open(json_file, 'r', encoding='utf-8')
-    output_file = open(yaml_file, 'w', encoding='utf-8')
-    for lines in input_file.read().replace('{', '!{').replace('}', '}!').split('!'):
-        nesting_level += lines.count('{')
-        if lines.count(':') == 1:
-            current_line = lines[(lines.index('"') + 1):-2]
-            output_file.write(' ' * nesting_level * 2 + current_line + ':\n')
-        elif lines.count(':') > 1:
-            if flag_timetable:
-                for key, value in about_lesson(lines).items():
-                    output_file.write(' ' * nesting_level * 2 + "{0}: {1}".format(key, value) + '\n')
-            else:
-                for key, value in about_timetable(lines + '""').items():
-                    output_file.write(' ' * nesting_level * 2 + "{0}: {1}".format(key, value) + '\n')
-                flag_timetable = True
-        nesting_level -= lines.count('}')
-    input_file.close()
-    output_file.close()
-    all_time += time.perf_counter() - start_time
+    in_array = [[False, 'None'] for size in range(100)]
+    with open(input_file, 'r', encoding='utf-8') as json_file:
+        with open(output_file, 'w', encoding='utf-8') as yaml_file:
+            for current_string in json_file.read().replace('{', '~{').replace('}', '}~').split('~'):
+                nesting_level += current_string.count('{')
+                if '[' in current_string:
+                    in_array[nesting_level] = [True, get_last_name(current_string)]
+                if current_string.count(':') == 1:
+                    in_array[nesting_level][1] = get_last_name(current_string[1:])
+                    current_string = '  ' * (nesting_level - 1) + '- ' * in_array[nesting_level - 1][0] + '  ' * \
+                                     (not in_array[nesting_level - 1][0]) * (nesting_level > 0) \
+                                     + in_array[nesting_level][1] + ':'
+                    yaml_file.write(current_string + '\n')
+                if current_string.count(':') > 1:
+                    flag = in_array[nesting_level - 1][0]
+                    if 'timetable' in in_array[nesting_level - 1][1]:
+                        for key, value in about_timetable(current_string + '""').items():
+                            yaml_file.write(writer(nesting_level, key, value, flag) + '\n')
+                            flag = False
+                    elif 'lesson' in in_array[nesting_level - 1][1]:
+                        for key, value in about_lesson(current_string).items():
+                            yaml_file.write(writer(nesting_level, key, value, flag) + '\n')
+                            flag = False
+                    elif 'days' in in_array[nesting_level - 1][1]:
+                        for key, value in about_days(current_string + '""').items():
+                            yaml_file.write(writer(nesting_level, key, value, flag) + '\n')
+                            flag = False
+
+                if ']' in current_string:
+                    in_array[nesting_level][0] = False
+
+                if '}' in current_string:
+                    nesting_level -= 1
+                    in_array[nesting_level + 1] = [False, 'None']
 
 
+all_time = 0
 for _ in range(100):
-    start('re_timetable.json', 'timetable.yaml')
+    start_time = perf_counter()
+    start('timetable.json', 'timetable.yaml')
+    all_time += perf_counter() - start_time
 print(all_time)
